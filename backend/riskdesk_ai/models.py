@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from riskdesk_ai.database import Base
@@ -30,13 +30,16 @@ class Event(Base):
 
 class RiskCase(Base):
     __tablename__ = "risk_cases"
+    __table_args__ = (
+        Index("ix_risk_cases_queue", "status", "risk_level", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), nullable=False, index=True)
     player_id: Mapped[str] = mapped_column(String(100), index=True)
     risk_score: Mapped[int] = mapped_column(Integer)
     risk_level: Mapped[str] = mapped_column(String(20), index=True)
-    recommended_action: Mapped[str] = mapped_column(String(50))
+    recommended_action: Mapped[str] = mapped_column(String(50), index=True)
     triggered_rules: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(30), default="open", index=True)
     created_at: Mapped[datetime] = mapped_column(

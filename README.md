@@ -4,7 +4,7 @@ A local risk-event intake and analyst case-review service with a FastAPI backend
 
 ## Current Portfolio Upgrade
 
-The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md) for verified results, screenshots, deployment suitability, and remaining limitations, and the [dependency security audit](docs/DEPENDENCY_AUDIT.md) for the current npm findings and remediation status.
+The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. The deployment foundation adds Python 3.12, PostgreSQL support, Alembic migrations, and real PostgreSQL integration coverage without provisioning a cloud service. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md), [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md), and [dependency security audit](docs/DEPENDENCY_AUDIT.md) for verified results and remaining limitations.
 
 ## Portfolio Screenshots
 
@@ -24,7 +24,7 @@ All names, identifiers, events, amounts, and decisions shown below are synthetic
 
 ## Backend
 
-The backend is a FastAPI application backed by local SQLite storage. Routes are intentionally thin, business logic lives in services, and database access is isolated in repositories.
+The backend is a FastAPI application using SQLAlchemy with PostgreSQL and SQLite support. SQLite remains the zero-service local default; PostgreSQL is the persistent deployment target. Routes are intentionally thin, business logic lives in services, and database access is isolated in repositories. Schema changes are explicit Alembic migrations and are never applied during application startup.
 
 ## Local Setup
 
@@ -32,19 +32,23 @@ Run these backend commands from the project root:
 
 ```powershell
 cd "C:\RiskDesk AI\backend"
-py -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock
+$env:RISKDESK_MIGRATION_DATABASE_URL="sqlite:///./riskdesk_ai.db"
+.\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m uvicorn riskdesk_ai.main:app --reload
 ```
 
-`backend/requirements.txt` is the human-maintained dependency input. `backend/requirements.lock` pins the complete Python 3.11-compatible dependency graph with hashes and is the reproducible install used by CI. Regenerate it after changing the input requirements:
+`backend/requirements.txt` is the human-maintained dependency input. `backend/requirements.lock` pins the complete Python 3.12-compatible dependency graph with hashes and is the reproducible install used by CI. Regenerate it after changing the input requirements:
 
 ```powershell
 cd "C:\RiskDesk AI\backend"
-uv pip compile requirements.txt --python-version 3.11 --universal --generate-hashes --output-file requirements.lock
+uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes --output-file requirements.lock
 ```
+
+Set `RISKDESK_DATABASE_URL` for application traffic and `RISKDESK_MIGRATION_DATABASE_URL` separately for Alembic. Do not commit either connection string. Existing SQLite installations are preserved through a baseline-stamp procedure documented in the [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md).
 
 ## Frontend
 

@@ -1,22 +1,12 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from riskdesk_ai.api.routes import router
-from riskdesk_ai.database import init_db
 from riskdesk_ai.schemas import HealthRead, RootRead
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_db()
-    yield
-
-
 def create_app() -> FastAPI:
-    fastapi_app = FastAPI(title="RiskDesk AI", version="0.1.0", lifespan=lifespan)
+    fastapi_app = FastAPI(title="RiskDesk AI", version="0.1.0")
     fastapi_app.add_middleware(
         CORSMiddleware,
         allow_origins=[
