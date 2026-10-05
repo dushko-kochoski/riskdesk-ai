@@ -1,6 +1,26 @@
 # RiskDesk AI
 
-Phase 1 backend foundation for a local risk-event intake and case creation service.
+A local risk-event intake and analyst case-review service with a FastAPI backend and a Vite React dashboard.
+
+## Current Portfolio Upgrade
+
+The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md) for verified results, screenshots, deployment suitability, and remaining limitations, and the [dependency security audit](docs/DEPENDENCY_AUDIT.md) for the current npm findings and remediation status.
+
+## Portfolio Screenshots
+
+All names, identifiers, events, amounts, and decisions shown below are synthetic demo data.
+
+![RiskDesk AI dashboard showing synthetic demo metrics, risk distribution, and recent activity](docs/screenshots/riskdesk-demo-dashboard.png)
+
+*Demo data — dashboard overview with queue health and recent activity.*
+
+![RiskDesk AI case queue filtered to one synthetic high-risk case](docs/screenshots/riskdesk-demo-high-risk-queue.png)
+
+*Demo data — server-backed high-risk queue filter.*
+
+![RiskDesk AI case-review drawer showing a synthetic high-risk case after a hold decision](docs/screenshots/riskdesk-demo-case-review-decision.png)
+
+*Demo data — case review, triggered rules, and recorded decision state.*
 
 ## Backend
 
@@ -13,10 +33,17 @@ Run these backend commands from the project root:
 ```powershell
 cd "C:\RiskDesk AI\backend"
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m uvicorn riskdesk_ai.main:app --reload
+```
+
+`backend/requirements.txt` is the human-maintained dependency input. `backend/requirements.lock` pins the complete Python 3.11-compatible dependency graph with hashes and is the reproducible install used by CI. Regenerate it after changing the input requirements:
+
+```powershell
+cd "C:\RiskDesk AI\backend"
+uv pip compile requirements.txt --python-version 3.11 --universal --generate-hashes --output-file requirements.lock
 ```
 
 ## Frontend
@@ -79,7 +106,7 @@ Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8000/api/v1/cases/1/decision" `
   -ContentType "application/json" `
-  -Body '{"action":"hold","analyst":"dushko","note":"High withdrawal with incomplete KYC. Holding for review."}'
+  -Body '{"action":"hold","analyst":"demo_analyst","note":"High withdrawal with incomplete KYC. Holding for review."}'
 ```
 
 Example response:
@@ -90,7 +117,7 @@ Example response:
   "action": "hold",
   "previous_status": "open",
   "new_status": "on_hold",
-  "analyst": "dushko",
+  "analyst": "demo_analyst",
   "note": "High withdrawal with incomplete KYC. Holding for review.",
   "audit_log_id": 10
 }

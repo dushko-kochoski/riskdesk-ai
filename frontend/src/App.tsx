@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type AuditLog,
   type CaseDecisionAction,
+  type CaseFilters,
   type DashboardSummary,
   type HealthResponse,
   type RiskCase,
@@ -35,6 +36,7 @@ const decisionActions: Array<{ label: string; value: CaseDecisionAction }> = [
 ];
 
 const decisionNote = "Decision submitted from RiskDesk AI demo dashboard.";
+const emptyCaseFilters: CaseFilters = { status: "", riskLevel: "", playerId: "" };
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -45,6 +47,8 @@ function App() {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
+  const [draftFilters, setDraftFilters] = useState<CaseFilters>(emptyCaseFilters);
+  const [appliedFilters, setAppliedFilters] = useState<CaseFilters>(emptyCaseFilters);
 
   const selectedCase = useMemo(
     () => cases.find((riskCase) => riskCase.id === selectedCaseId) ?? null,
@@ -56,13 +60,13 @@ function App() {
     const [healthResult, summaryResult, casesResult] = await Promise.all([
       getHealth(),
       getDashboardSummary(),
-      getCases(),
+      getCases(appliedFilters),
     ]);
     setHealth(healthResult);
     setSummary(summaryResult);
     setCases(casesResult);
     return casesResult;
-  }, []);
+  }, [appliedFilters]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -178,6 +182,21 @@ function App() {
     }
   }
 
+  function handleFilterApply() {
+    setSelectedCaseId(null);
+    setAppliedFilters({
+      status: draftFilters.status,
+      riskLevel: draftFilters.riskLevel,
+      playerId: draftFilters.playerId?.trim(),
+    });
+  }
+
+  function handleFilterClear() {
+    setSelectedCaseId(null);
+    setDraftFilters(emptyCaseFilters);
+    setAppliedFilters(emptyCaseFilters);
+  }
+
   return (
     <main className="min-h-screen text-slate-100">
       <header className="border-b border-white/10 bg-ink-950/85 backdrop-blur">
@@ -254,6 +273,12 @@ function App() {
           </div>
           <CaseQueue
             cases={cases}
+            filters={draftFilters}
+            hasActiveFilters={Object.values(appliedFilters).some(Boolean)}
+            isBusy={isLoading || isMutating}
+            onApplyFilters={handleFilterApply}
+            onClearFilters={handleFilterClear}
+            onFiltersChange={setDraftFilters}
             onView={(riskCase) => setSelectedCaseId(riskCase.id)}
           />
         </section>
@@ -527,17 +552,100 @@ function SimulatorPanel({ isBusy, onRun }: SimulatorPanelProps) {
 
 type CaseQueueProps = {
   cases: RiskCase[];
+  filters: CaseFilters;
+  hasActiveFilters: boolean;
+  isBusy: boolean;
+  onApplyFilters: () => void;
+  onClearFilters: () => void;
+  onFiltersChange: (filters: CaseFilters) => void;
   onView: (riskCase: RiskCase) => void;
 };
 
-function CaseQueue({ cases, onView }: CaseQueueProps) {
+function CaseQueue({
+  cases,
+  filters,
+  hasActiveFilters,
+  isBusy,
+  onApplyFilters,
+  onClearFilters,
+  onFiltersChange,
+  onView,
+}: CaseQueueProps) {
   return (
     <section className="overflow-hidden rounded-lg border border-white/10 bg-ink-900/80 shadow-panel">
-      <div className="flex flex-col gap-2 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="border-b border-white/10 px-4 py-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Case Queue</h2>
-          <p className="mt-1 text-sm text-slate-400">{cases.length} cases in current queue</p>
+          <p className="mt-1 text-sm text-slate-400">
+            {cases.length} {hasActiveFilters ? "matching" : "total"} {cases.length === 1 ? "case" : "cases"}
+          </p>
         </div>
+        <form
+          className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px_auto] md:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onApplyFilters();
+          }}
+        >
+          <label className="grid gap-1.5 text-xs font-medium text-slate-400">
+            Player ID
+            <input
+              type="search"
+              value={filters.playerId ?? ""}
+              onChange={(event) => onFiltersChange({ ...filters, playerId: event.target.value })}
+              placeholder="e.g. plr_sim_0001"
+              className="min-w-0 rounded-md border border-white/10 bg-ink-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-teal-300/60 focus:ring-2 focus:ring-teal-300/15"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-slate-400">
+            Risk level
+            <select
+              value={filters.riskLevel ?? ""}
+              onChange={(event) => onFiltersChange({ ...filters, riskLevel: event.target.value })}
+              className="rounded-md border border-white/10 bg-ink-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-teal-300/60 focus:ring-2 focus:ring-teal-300/15"
+            >
+              <option value="">All risks</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-slate-400">
+            Status
+            <select
+              value={filters.status ?? ""}
+              onChange={(event) => onFiltersChange({ ...filters, status: event.target.value })}
+              className="rounded-md border border-white/10 bg-ink-950/70 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-teal-300/60 focus:ring-2 focus:ring-teal-300/15"
+            >
+              <option value="">All statuses</option>
+              <option value="open">Open</option>
+              <option value="on_hold">On hold</option>
+              <option value="escalated">Escalated</option>
+              <option value="pending_kyc">Pending KYC</option>
+              <option value="rejected">Rejected</option>
+              <option value="false_positive">False positive</option>
+              <option value="closed">Closed</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={isBusy}
+              className="flex-1 rounded-md border border-teal-300/30 bg-teal-300/10 px-3.5 py-2.5 text-sm font-semibold text-teal-100 transition hover:border-teal-200/60 hover:bg-teal-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              disabled={isBusy || (!hasActiveFilters && !Object.values(filters).some(Boolean))}
+              onClick={onClearFilters}
+              className="rounded-md border border-white/10 bg-white/[0.04] px-3.5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="hidden lg:block">
@@ -568,7 +676,9 @@ function CaseQueue({ cases, onView }: CaseQueueProps) {
             {cases.length === 0 ? (
               <tr>
                 <td className="px-4 py-8 text-center text-slate-400" colSpan={8}>
-                  No cases in queue. Generate clean demo data to populate the dashboard.
+                  {hasActiveFilters
+                    ? "No cases match these filters. Clear or adjust the criteria."
+                    : "No cases in queue. Generate clean demo data to populate the dashboard."}
                 </td>
               </tr>
             ) : (
@@ -613,7 +723,9 @@ function CaseQueue({ cases, onView }: CaseQueueProps) {
       <div className="grid gap-3 p-4 lg:hidden">
         {cases.length === 0 ? (
           <div className="rounded-md border border-white/10 bg-white/[0.035] px-4 py-8 text-center text-sm text-slate-400">
-            No cases in queue. Generate clean demo data to populate the dashboard.
+            {hasActiveFilters
+              ? "No cases match these filters. Clear or adjust the criteria."
+              : "No cases in queue. Generate clean demo data to populate the dashboard."}
           </div>
         ) : (
           cases.map((riskCase) => (
