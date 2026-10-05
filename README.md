@@ -1,6 +1,26 @@
 # RiskDesk AI
 
-Phase 1 backend foundation for a local risk-event intake and case creation service.
+A local risk-event intake and analyst case-review service with a FastAPI backend and a Vite React dashboard.
+
+## Current Portfolio Upgrade
+
+The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. See [Portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md) for verified results, screenshots, deployment suitability, and remaining limitations.
+
+## Portfolio Screenshots
+
+All names, identifiers, events, amounts, and decisions shown below are synthetic demo data.
+
+![RiskDesk AI dashboard showing synthetic demo metrics, risk distribution, and recent activity](docs/screenshots/riskdesk-demo-dashboard.png)
+
+*Demo data — dashboard overview with queue health and recent activity.*
+
+![RiskDesk AI case queue filtered to one synthetic high-risk case](docs/screenshots/riskdesk-demo-high-risk-queue.png)
+
+*Demo data — server-backed high-risk queue filter.*
+
+![RiskDesk AI case-review drawer showing a synthetic high-risk case after a hold decision](docs/screenshots/riskdesk-demo-case-review-decision.png)
+
+*Demo data — case review, triggered rules, and recorded decision state.*
 
 ## Backend
 
@@ -79,7 +99,7 @@ Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8000/api/v1/cases/1/decision" `
   -ContentType "application/json" `
-  -Body '{"action":"hold","analyst":"dushko","note":"High withdrawal with incomplete KYC. Holding for review."}'
+  -Body '{"action":"hold","analyst":"demo_analyst","note":"High withdrawal with incomplete KYC. Holding for review."}'
 ```
 
 Example response:
@@ -90,7 +110,7 @@ Example response:
   "action": "hold",
   "previous_status": "open",
   "new_status": "on_hold",
-  "analyst": "dushko",
+  "analyst": "demo_analyst",
   "note": "High withdrawal with incomplete KYC. Holding for review.",
   "audit_log_id": 10
 }

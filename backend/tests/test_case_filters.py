@@ -117,3 +117,35 @@ def test_combined_filter_by_status_and_risk_level(client: TestClient) -> None:
     assert len(cases) == 1
     assert cases[0]["status"] == "on_hold"
     assert cases[0]["risk_level"] == "MEDIUM"
+
+
+def test_combined_filters_only_return_the_exact_matching_player(client: TestClient) -> None:
+    case_ids = seed_case_queue(client)
+
+    response = client.get(
+        "/api/v1/cases",
+        params={
+            "status": "on_hold",
+            "risk_level": "MEDIUM",
+            "player_id": "plr_filter_medium",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [risk_case["id"] for risk_case in response.json()] == [case_ids["medium"]]
+
+
+def test_filters_return_empty_list_when_no_cases_match(client: TestClient) -> None:
+    seed_case_queue(client)
+
+    response = client.get(
+        "/api/v1/cases",
+        params={
+            "status": "open",
+            "risk_level": "HIGH",
+            "player_id": "plr_no_match",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []

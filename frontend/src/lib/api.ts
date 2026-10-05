@@ -39,6 +39,12 @@ export type RiskCase = {
   created_at: string;
 };
 
+export type CaseFilters = {
+  status?: string;
+  riskLevel?: string;
+  playerId?: string;
+};
+
 export type SimulatorScenario =
   | "normal_player"
   | "high_value_withdrawal_incomplete_kyc"
@@ -109,8 +115,14 @@ export function getDashboardSummary() {
   return request<DashboardSummary>("/api/v1/dashboard/summary");
 }
 
-export function getCases() {
-  return request<RiskCase[]>("/api/v1/cases");
+export function getCases(filters: CaseFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.riskLevel) params.set("risk_level", filters.riskLevel);
+  if (filters.playerId) params.set("player_id", filters.playerId);
+  const query = params.toString();
+
+  return request<RiskCase[]>(`/api/v1/cases${query ? `?${query}` : ""}`);
 }
 
 export function runSimulator(scenario: SimulatorScenario, playerId?: string) {

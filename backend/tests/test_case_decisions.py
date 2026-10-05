@@ -52,7 +52,7 @@ def test_hold_decision_updates_case_status_to_on_hold(client: TestClient) -> Non
         f"/api/v1/cases/{case_id}/decision",
         json={
             "action": "hold",
-            "analyst": "dushko",
+            "analyst": "demo_analyst",
             "note": "High withdrawal with incomplete KYC. Holding for review.",
         },
     )
@@ -63,7 +63,7 @@ def test_hold_decision_updates_case_status_to_on_hold(client: TestClient) -> Non
     assert body["action"] == "hold"
     assert body["previous_status"] == "open"
     assert body["new_status"] == "on_hold"
-    assert body["analyst"] == "dushko"
+    assert body["analyst"] == "demo_analyst"
     assert body["note"] == "High withdrawal with incomplete KYC. Holding for review."
 
     case_response = client.get(f"/api/v1/cases/{case_id}")
