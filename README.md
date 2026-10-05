@@ -4,7 +4,7 @@ A local risk-event intake and analyst case-review service with a FastAPI backend
 
 ## Current Portfolio Upgrade
 
-The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. See [Portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md) for verified results, screenshots, deployment suitability, and remaining limitations.
+The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md) for verified results, screenshots, deployment suitability, and remaining limitations, and the [dependency security audit](docs/DEPENDENCY_AUDIT.md) for the current npm findings and remediation status.
 
 ## Portfolio Screenshots
 
@@ -33,10 +33,17 @@ Run these backend commands from the project root:
 ```powershell
 cd "C:\RiskDesk AI\backend"
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m uvicorn riskdesk_ai.main:app --reload
+```
+
+`backend/requirements.txt` is the human-maintained dependency input. `backend/requirements.lock` pins the complete Python 3.11-compatible dependency graph with hashes and is the reproducible install used by CI. Regenerate it after changing the input requirements:
+
+```powershell
+cd "C:\RiskDesk AI\backend"
+uv pip compile requirements.txt --python-version 3.11 --universal --generate-hashes --output-file requirements.lock
 ```
 
 ## Frontend
