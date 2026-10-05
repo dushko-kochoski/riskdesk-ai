@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RiskDesk AI">
+  <defs>
+    <linearGradient id="background" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d4ed8"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#080b12"/>
+  <path d="M32 8 52 16v14c0 12.8-7.8 21.7-20 26-12.2-4.3-20-13.2-20-26V16L32 8Z" fill="url(#background)"/>
+  <path d="M23 42V21h10.2c6 0 9.8 3.3 9.8 8.6 0 3.5-1.8 6.2-5 7.5l6 4.9h-7.6l-4.7-4.1h-2.5V42H23Zm6.2-9.5h3.6c2.5 0 4-1 4-2.9 0-2-1.5-3-4-3h-3.6v5.9Z" fill="white"/>
+</svg>
