@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from riskdesk_ai import schemas
+from riskdesk_ai.auth import CurrentOperator, DemoMode, demo_mode_enabled, require_operator
 from riskdesk_ai.database import get_db
 from riskdesk_ai.services.audit_service import AuditService
 from riskdesk_ai.services.case_service import CaseService
@@ -12,8 +13,16 @@ from riskdesk_ai.services.demo_service import DemoService
 from riskdesk_ai.services.event_service import EventService
 from riskdesk_ai.services.simulator_service import SimulatorService
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_operator)])
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+@router.get("/auth/me", response_model=schemas.AuthenticatedOperatorRead)
+def authenticated_operator(operator: CurrentOperator) -> schemas.AuthenticatedOperatorRead:
+    return schemas.AuthenticatedOperatorRead(
+        actor=operator.username,
+        demo_mode=demo_mode_enabled(),
+    )
 
 
 @router.post("/events", response_model=schemas.EventIngestResponse, status_code=201)
@@ -32,12 +41,12 @@ def dashboard_summary(db: DbSession) -> schemas.DashboardSummaryResponse:
 
 
 @router.post("/demo/reset", response_model=schemas.DemoResetResponse)
-def reset_demo(db: DbSession) -> schemas.DemoResetResponse:
+def reset_demo(db: DbSession, _: DemoMode) -> schemas.DemoResetResponse:
     return DemoService(db).reset()
 
 
 @router.post("/demo/seed", response_model=schemas.DemoSeedResponse)
-def seed_demo(db: DbSession) -> schemas.DemoSeedResponse:
+def seed_demo(db: DbSession, _: DemoMode) -> schemas.DemoSeedResponse:
     return DemoService(db).seed()
 
 
@@ -68,8 +77,9 @@ def decide_case(
     case_id: int,
     request: schemas.CaseDecisionRequest,
     db: DbSession,
+    operator: CurrentOperator,
 ) -> schemas.CaseDecisionResponse:
-    return CaseService(db).record_decision(case_id, request)
+    return CaseService(db).record_decision(case_id, request, actor=operator.username)
 
 
 @router.get("/audit-logs", response_model=list[schemas.AuditLogRead])
@@ -81,5 +91,6 @@ def list_audit_logs(db: DbSession) -> list[schemas.AuditLogRead]:
 def run_simulator(
     request: schemas.SimulatorRunRequest,
     db: DbSession,
+    _: DemoMode,
 ) -> schemas.SimulatorRunResponse:
     return SimulatorService(db).run(request)

@@ -11,7 +11,7 @@ from riskdesk_ai.main import app
 
 
 @pytest.fixture()
-def client() -> Generator[TestClient, None, None]:
+def client(auth_headers: dict[str, str]) -> Generator[TestClient, None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -28,7 +28,7 @@ def client() -> Generator[TestClient, None, None]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=auth_headers) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 

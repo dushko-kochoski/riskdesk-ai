@@ -17,6 +17,14 @@ DECISION_STATUS_MAPPING = {
     "mark_false_positive": "false_positive",
     "close": "closed",
 }
+ACTIVE_CASE_STATUSES = {"open", "on_hold", "escalated", "pending_kyc"}
+ALL_DECISION_ACTIONS = set(DECISION_STATUS_MAPPING)
+ALLOWED_ACTIONS_BY_STATUS = {
+    "open": ALL_DECISION_ACTIONS,
+    "on_hold": ALL_DECISION_ACTIONS - {"hold"},
+    "escalated": ALL_DECISION_ACTIONS - {"escalate"},
+    "pending_kyc": ALL_DECISION_ACTIONS - {"request_kyc"},
+}
 
 
 class CaseService:
@@ -59,17 +67,37 @@ class CaseService:
         self,
         case_id: int,
         request: schemas.CaseDecisionRequest,
+        *,
+        actor: str,
     ) -> schemas.CaseDecisionResponse:
         risk_case = self.get_case(case_id)
-        new_status = DECISION_STATUS_MAPPING.get(request.action)
-        if new_status is None:
+        action = request.action.value
+        if risk_case.version != request.expected_version:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported case decision action: {request.action}",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Case changed since it was loaded; refresh and try again",
             )
 
         previous_status = risk_case.status
-        self.repository.update_status(risk_case, new_status)
+        allowed_actions = ALLOWED_ACTIONS_BY_STATUS.get(previous_status, set())
+        if previous_status not in ACTIVE_CASE_STATUSES or action not in allowed_actions:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Action '{action}' is not allowed while case is '{previous_status}'",
+            )
+
+        new_status = DECISION_STATUS_MAPPING[action]
+        updated_case = self.repository.update_status_if_version_matches(
+            case_id=case_id,
+            expected_version=request.expected_version,
+            status=new_status,
+        )
+        if updated_case is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Case changed since it was loaded; refresh and try again",
+            )
+
         audit_log = self.audit_service.record(
             action="case_decision_recorded",
             entity_type="case",
@@ -77,10 +105,11 @@ class CaseService:
             details=json.dumps(
                 {
                     "case_id": case_id,
-                    "action": request.action,
+                    "action": action,
                     "previous_status": previous_status,
                     "new_status": new_status,
-                    "analyst": request.analyst,
+                    "actor": actor,
+                    "version": updated_case.version,
                     "note": request.note,
                 },
                 sort_keys=True,
@@ -90,10 +119,11 @@ class CaseService:
 
         return schemas.CaseDecisionResponse(
             case_id=case_id,
-            action=request.action,
+            action=action,
             previous_status=previous_status,
             new_status=new_status,
-            analyst=request.analyst,
+            actor=actor,
+            version=updated_case.version,
             note=request.note,
             audit_log_id=audit_log.id,
         )

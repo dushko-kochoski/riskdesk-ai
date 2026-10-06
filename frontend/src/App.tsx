@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  ApiError,
   type AuditLog,
+  type AuthenticatedOperator,
   type CaseDecisionAction,
   type CaseFilters,
   type DashboardSummary,
   type HealthResponse,
   type RiskCase,
   type SimulatorScenario,
+  clearOperatorCredentials,
   getCases,
+  getAuthenticatedOperator,
   getDashboardSummary,
   getHealth,
   resetDemoData,
   runSimulator,
   seedDemoData,
+  setOperatorCredentials,
   submitCaseDecision,
 } from "./lib/api";
 
@@ -35,15 +40,18 @@ const decisionActions: Array<{ label: string; value: CaseDecisionAction }> = [
   { label: "Close", value: "close" },
 ];
 
+const terminalCaseStatuses = new Set(["resolved", "rejected", "false_positive", "closed"]);
+
 const decisionNote = "Decision submitted from RiskDesk AI demo dashboard.";
 const emptyCaseFilters: CaseFilters = { status: "", riskLevel: "", playerId: "" };
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [operator, setOperator] = useState<AuthenticatedOperator | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [cases, setCases] = useState<RiskCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
@@ -57,18 +65,25 @@ function App() {
 
   const loadDashboard = useCallback(async () => {
     setError(null);
-    const [healthResult, summaryResult, casesResult] = await Promise.all([
-      getHealth(),
+    const [summaryResult, casesResult] = await Promise.all([
       getDashboardSummary(),
       getCases(appliedFilters),
     ]);
-    setHealth(healthResult);
     setSummary(summaryResult);
     setCases(casesResult);
     return casesResult;
   }, [appliedFilters]);
 
   useEffect(() => {
+    getHealth()
+      .then(setHealth)
+      .catch(() => setHealth(null));
+  }, []);
+
+  useEffect(() => {
+    if (!operator) {
+      return;
+    }
     setIsLoading(true);
     loadDashboard()
       .catch((caughtError: unknown) => {
@@ -77,7 +92,7 @@ function App() {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [loadDashboard]);
+  }, [loadDashboard, operator]);
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -165,17 +180,53 @@ function App() {
     }
   }
 
-  async function handleDecision(caseId: number, action: CaseDecisionAction) {
+  async function handleLogin(username: string, password: string) {
+    setIsLoading(true);
+    setError(null);
+    setOperatorCredentials(username, password);
+    try {
+      const authenticatedOperator = await getAuthenticatedOperator();
+      setOperator(authenticatedOperator);
+      setLastAction(`Signed in as ${authenticatedOperator.actor}.`);
+    } catch (caughtError) {
+      clearOperatorCredentials();
+      setError(caughtError instanceof Error ? caughtError.message : "Sign in failed");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    clearOperatorCredentials();
+    setOperator(null);
+    setSummary(null);
+    setCases([]);
+    setSelectedCaseId(null);
+    setLastAction(null);
+    setError(null);
+  }
+
+  async function handleDecision(riskCase: RiskCase, action: CaseDecisionAction) {
     setIsMutating(true);
     setError(null);
     try {
-      const result = await submitCaseDecision(caseId, action, "demo_analyst", decisionNote);
-      setLastAction(`Case ${result.case_id} moved to ${formatToken(result.new_status)}`);
+      const result = await submitCaseDecision(
+        riskCase.id,
+        action,
+        riskCase.version,
+        decisionNote,
+      );
+      setLastAction(
+        `Case ${result.case_id} moved to ${formatToken(result.new_status)} by ${result.actor}`,
+      );
       const refreshedCases = await loadDashboard();
-      if (!refreshedCases.some((riskCase) => riskCase.id === caseId)) {
+      if (!refreshedCases.some((candidate) => candidate.id === riskCase.id)) {
         setSelectedCaseId(null);
       }
     } catch (caughtError) {
+      if (caughtError instanceof ApiError && caughtError.status === 409) {
+        await loadDashboard();
+      }
       setError(caughtError instanceof Error ? caughtError.message : "Decision submission failed");
     } finally {
       setIsMutating(false);
@@ -197,6 +248,17 @@ function App() {
     setAppliedFilters(emptyCaseFilters);
   }
 
+  if (!operator) {
+    return (
+      <LoginScreen
+        error={error}
+        health={health}
+        isLoading={isLoading}
+        onLogin={handleLogin}
+      />
+    );
+  }
+
   return (
     <main className="min-h-screen text-slate-100">
       <header className="border-b border-white/10 bg-ink-950/85 backdrop-blur">
@@ -208,7 +270,7 @@ function App() {
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h1 className="text-3xl font-semibold tracking-normal text-white">RiskDesk AI</h1>
               <span className="rounded-md border border-teal-300/20 bg-teal-300/10 px-2.5 py-1 text-xs font-semibold text-teal-100">
-                Demo environment
+                {operator.demo_mode ? "Local demo mode" : "Protected workspace"}
               </span>
             </div>
             <p className="mt-2 max-w-2xl text-sm text-slate-400">
@@ -220,6 +282,9 @@ function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+              {operator.actor}
+            </span>
             <BackendStatus health={health} error={error} isLoading={isLoading} />
             <button
               type="button"
@@ -228,6 +293,13 @@ function App() {
               className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-teal-300/50 hover:bg-teal-300/10"
             >
               Refresh
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-red-300/40 hover:bg-red-400/10"
+            >
+              Sign out
             </button>
           </div>
         </div>
@@ -261,16 +333,22 @@ function App() {
           <RecentActivity auditLogs={summary?.recent_audit_logs ?? []} />
         </section>
 
-        <section className="mt-5 grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="grid gap-5">
-            <DemoControls
-              isBusy={isMutating}
-              onReset={handleDemoReset}
-              onSeed={handleDemoSeed}
-              onRefresh={handleManualRefresh}
-            />
-            <SimulatorPanel isBusy={isMutating} onRun={handleSimulatorRun} />
-          </div>
+        <section
+          className={`mt-5 grid gap-5 ${
+            operator.demo_mode ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "grid-cols-1"
+          }`}
+        >
+          {operator.demo_mode ? (
+            <div className="grid gap-5">
+              <DemoControls
+                isBusy={isMutating}
+                onReset={handleDemoReset}
+                onSeed={handleDemoSeed}
+                onRefresh={handleManualRefresh}
+              />
+              <SimulatorPanel isBusy={isMutating} onRun={handleSimulatorRun} />
+            </div>
+          ) : null}
           <CaseQueue
             cases={cases}
             filters={draftFilters}
@@ -290,6 +368,77 @@ function App() {
         onClose={() => setSelectedCaseId(null)}
         onDecision={handleDecision}
       />
+    </main>
+  );
+}
+
+type LoginScreenProps = {
+  error: string | null;
+  health: HealthResponse | null;
+  isLoading: boolean;
+  onLogin: (username: string, password: string) => Promise<void>;
+};
+
+function LoginScreen({ error, health, isLoading, onLogin }: LoginScreenProps) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4 py-10 text-slate-100">
+      <section className="w-full max-w-md rounded-xl border border-white/10 bg-ink-900/90 p-6 shadow-panel sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">
+          Risk Operations
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-white">RiskDesk AI</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-400">
+          Sign in with the operator credentials configured on the server. Credentials stay in
+          memory for this browser tab and are never used as client-supplied audit identity.
+        </p>
+        {error ? (
+          <div className="mt-5 rounded-md border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {error}
+          </div>
+        ) : null}
+        <form
+          className="mt-6 grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onLogin(username, password);
+          }}
+        >
+          <label className="grid gap-2 text-sm font-medium text-slate-200">
+            Operator username
+            <input
+              autoComplete="username"
+              required
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              className="rounded-md border border-white/10 bg-ink-950 px-3 py-2.5 text-white outline-none transition focus:border-teal-300/60"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-slate-200">
+            Password
+            <input
+              autoComplete="current-password"
+              required
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="rounded-md border border-white/10 bg-ink-950 px-3 py-2.5 text-white outline-none transition focus:border-teal-300/60"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="mt-1 rounded-md border border-teal-300/30 bg-teal-300/10 px-4 py-3 text-sm font-semibold text-teal-100 transition hover:border-teal-200/60 hover:bg-teal-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+        <div className="mt-5">
+          <BackendStatus health={health} error={null} isLoading={!health} />
+        </div>
+      </section>
     </main>
   );
 }
@@ -760,10 +909,21 @@ type CaseDetailDrawerProps = {
   riskCase: RiskCase | null;
   isBusy: boolean;
   onClose: () => void;
-  onDecision: (caseId: number, action: CaseDecisionAction) => Promise<void>;
+  onDecision: (riskCase: RiskCase, action: CaseDecisionAction) => Promise<void>;
 };
 
 function CaseDetailDrawer({ riskCase, isBusy, onClose, onDecision }: CaseDetailDrawerProps) {
+  const availableActions = riskCase
+    ? decisionActions.filter(
+        (action) =>
+          !terminalCaseStatuses.has(riskCase.status) &&
+          !(
+            (riskCase.status === "on_hold" && action.value === "hold") ||
+            (riskCase.status === "escalated" && action.value === "escalate")
+          ),
+      )
+    : [];
+
   return (
     <div
       className={`fixed inset-0 z-50 transition ${
@@ -835,19 +995,25 @@ function CaseDetailDrawer({ riskCase, isBusy, onClose, onDecision }: CaseDetailD
 
             <div className="border-t border-white/10 p-5">
               <p className="mb-3 text-sm font-semibold text-white">Submit Decision</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {decisionActions.map((action) => (
-                  <button
-                    key={action.value}
-                    type="button"
-                    disabled={isBusy}
-                    onClick={() => void onDecision(riskCase.id, action.value)}
-                    className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-teal-300/50 hover:bg-teal-300/10 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
+              {availableActions.length ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {availableActions.map((action) => (
+                    <button
+                      key={action.value}
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void onDecision(riskCase, action.value)}
+                      className="rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-teal-300/50 hover:bg-teal-300/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  This case is terminal and cannot accept another decision.
+                </p>
+              )}
             </div>
           </>
         ) : null}
@@ -949,12 +1115,12 @@ function formatAuditDetails(details: string) {
   try {
     const parsed = JSON.parse(details) as {
       action?: string;
-      analyst?: string;
+      actor?: string;
       new_status?: string;
       note?: string | null;
     };
     if (parsed.action && parsed.new_status) {
-      return `${formatToken(parsed.action)} by ${parsed.analyst ?? "analyst"} -> ${formatToken(
+      return `${formatToken(parsed.action)} by ${parsed.actor ?? "operator"} -> ${formatToken(
         parsed.new_status,
       )}${parsed.note ? `: ${parsed.note}` : ""}`;
     }

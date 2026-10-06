@@ -1,5 +1,7 @@
 # Portfolio Upgrade Audit
 
+> Current status (2026-10-06): the authentication, server-derived audit identity, transition validation, and optimistic-concurrency items identified in this audit are implemented in [Access Protection and Case Transitions](ACCESS_AND_CASE_TRANSITIONS.md). The observations below describe the original audited baseline and remain as historical evidence.
+
 Audit date: 2026-10-05
 Branch: `codex/portfolio-case-filters`
 

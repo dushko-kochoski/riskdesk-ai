@@ -32,6 +32,19 @@ def test_existing_sqlite_database_can_be_adopted_without_losing_data(tmp_path) -
                     """,
                 ),
             )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO risk_cases (
+                        id, event_id, player_id, risk_score, risk_level,
+                        recommended_action, triggered_rules, status, created_at
+                    ) VALUES (
+                        1, 1, 'plr_existing', 65, 'MEDIUM',
+                        'manual_review', '[]', 'open', '2026-10-05 10:00:00'
+                    )
+                    """,
+                ),
+            )
             connection.execute(text("DROP TABLE alembic_version"))
         engine.dispose()
 
@@ -43,6 +56,11 @@ def test_existing_sqlite_database_can_be_adopted_without_losing_data(tmp_path) -
             assert connection.scalar(text("SELECT player_id FROM events WHERE id = 1")) == (
                 "plr_existing"
             )
+            version_columns = {
+                column["name"]: column for column in inspect(engine).get_columns("risk_cases")
+            }
+            assert version_columns["version"]["nullable"] is False
+            assert connection.scalar(text("SELECT version FROM risk_cases WHERE id = 1")) == 1
         index_names = {index["name"] for index in inspect(engine).get_indexes("risk_cases")}
         assert {"ix_risk_cases_queue", "ix_risk_cases_recommended_action"}.issubset(index_names)
         engine.dispose()

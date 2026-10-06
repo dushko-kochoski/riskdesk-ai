@@ -67,7 +67,7 @@ $env:RISKDESK_MIGRATION_DATABASE_URL="sqlite:///./riskdesk_ai.db"
 .\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-`stamp` records the matching baseline without recreating tables or changing rows. Revision `0002_case_queue_indexes` adds indexes only. The automated SQLite adoption test verifies that an existing row survives this sequence.
+`stamp` records the matching baseline without recreating tables or changing rows. Revision `0002_case_queue_indexes` adds indexes. Revision `0003_case_version` adds a non-null `version` column with a default of `1`; existing cases are retained and initialized to version `1`. The automated SQLite adoption test verifies that existing event and case rows survive this sequence.
 
 Do not stamp an installation whose schema was manually changed or is missing a baseline table. Take a copy and reconcile its schema first.
 
@@ -105,11 +105,11 @@ The suite deliberately downgrades and rebuilds the named test database. Its guar
 
 - No managed PostgreSQL account, project, credentials, backups, or region have been selected.
 - No production data transfer has been rehearsed.
-- Access protection and application-level authorization are still required before exposing the API.
-- Analyst identity still comes from the request body, and source-state transition rules are not yet enforced.
+- The current HTTP Basic protection is suitable only for the single-operator portfolio demo over HTTPS; multi-user identity, roles, session expiry, rate limiting, and credential rotation remain future work.
+- Production secrets still need to be created in the selected host's encrypted secret store.
 - Production CORS and a recognized Vercel backend entrypoint remain to be configured.
 - Connection limits must be tuned against the selected provider's actual plan before deployment.
-- Frontend component and deployed end-to-end tests remain outstanding.
+- Deployed end-to-end tests remain outstanding.
 - Tailwind 4 remains a separate migration.
 
 ## Verified results
