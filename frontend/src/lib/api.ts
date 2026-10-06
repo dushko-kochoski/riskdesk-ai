@@ -1,8 +1,14 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+let authorizationHeader: string | null = null;
 
 export type HealthResponse = {
   status: string;
   service: string;
+};
+
+export type AuthenticatedOperator = {
+  actor: string;
+  demo_mode: boolean;
 };
 
 export type DashboardSummary = {
@@ -36,6 +42,7 @@ export type RiskCase = {
   recommended_action: string;
   triggered_rules: string[];
   status: string;
+  version: number;
   created_at: string;
 };
 
@@ -67,7 +74,8 @@ export type CaseDecisionResponse = {
   action: string;
   previous_status: string;
   new_status: string;
-  analyst: string;
+  actor: string;
+  version: number;
   note: string | null;
   audit_log_id: number;
 };
@@ -90,18 +98,46 @@ export type DemoSeedResponse = {
   case_ids: number[];
 };
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+function encodeBasicCredentials(username: string, password: string) {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return `Basic ${window.btoa(binary)}`;
+}
+
+export function setOperatorCredentials(username: string, password: string) {
+  authorizationHeader = encodeBasicCredentials(username, password);
+}
+
+export function clearOperatorCredentials() {
+  authorizationHeader = null;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...(authorizationHeader ? { Authorization: authorizationHeader } : {}),
       ...options?.headers,
     },
     ...options,
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
+    throw new ApiError(response.status, body?.detail ?? `Request failed with ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -109,6 +145,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export function getHealth() {
   return request<HealthResponse>("/healthz");
+}
+
+export function getAuthenticatedOperator() {
+  return request<AuthenticatedOperator>("/api/v1/auth/me");
 }
 
 export function getDashboardSummary() {
@@ -135,12 +175,12 @@ export function runSimulator(scenario: SimulatorScenario, playerId?: string) {
 export function submitCaseDecision(
   caseId: number,
   action: CaseDecisionAction,
-  analyst: string,
+  expectedVersion: number,
   note: string,
 ) {
   return request<CaseDecisionResponse>(`/api/v1/cases/${caseId}/decision`, {
     method: "POST",
-    body: JSON.stringify({ action, analyst, note }),
+    body: JSON.stringify({ action, expected_version: expectedVersion, note }),
   });
 }
 

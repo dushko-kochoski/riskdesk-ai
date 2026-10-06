@@ -1,6 +1,7 @@
 import json
 import os
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,10 @@ def migrated_postgres(postgres_urls: tuple[str, str]) -> Generator[str, None, No
 
 
 @pytest.fixture()
-def postgres_client(migrated_postgres: str) -> Generator[TestClient, None, None]:
+def postgres_client(
+    migrated_postgres: str,
+    auth_headers: dict[str, str],
+) -> Generator[TestClient, None, None]:
     engine = create_database_engine(migrated_postgres)
     testing_session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -72,7 +76,7 @@ def postgres_client(migrated_postgres: str) -> Generator[TestClient, None, None]
             yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as client:
+    with TestClient(app, headers=auth_headers) as client:
         yield client
     app.dependency_overrides.clear()
     engine.dispose()
@@ -92,6 +96,10 @@ def test_migrations_create_the_postgresql_schema(migrated_postgres: str) -> None
             "ix_risk_cases_queue",
             "ix_risk_cases_recommended_action",
         }.issubset(index_names)
+        risk_case_columns = {
+            column["name"] for column in database_inspector.get_columns("risk_cases")
+        }
+        assert "version" in risk_case_columns
     finally:
         engine.dispose()
 
@@ -116,7 +124,7 @@ def seed_case_queue(client: TestClient) -> tuple[int, int]:
 
     hold_response = client.post(
         f"/api/v1/cases/{medium_case_id}/decision",
-        json={"action": "hold", "analyst": "integration_test"},
+        json={"action": "hold", "expected_version": 1},
     )
     assert hold_response.status_code == 200
     return medium_case_id, high_case_id
@@ -160,7 +168,8 @@ def test_postgresql_decision_and_audit_persist_across_sessions(
             details = json.loads(audit_log.details)
             assert details["previous_status"] == "open"
             assert details["new_status"] == "on_hold"
-            assert details["analyst"] == "integration_test"
+            assert details["actor"] == "portfolio_operator"
+            assert details["version"] == 2
     finally:
         engine.dispose()
 
@@ -169,23 +178,22 @@ def test_postgresql_rolls_back_case_update_when_audit_write_fails(
     postgres_client: TestClient,
     migrated_postgres: str,
     monkeypatch: pytest.MonkeyPatch,
+    auth_headers: dict[str, str],
 ) -> None:
     medium_case_id, _ = seed_case_queue(postgres_client)
-
-    resolve_response = postgres_client.post(
-        f"/api/v1/cases/{medium_case_id}/decision",
-        json={"action": "approve", "analyst": "integration_test"},
-    )
-    assert resolve_response.status_code == 200
 
     def fail_audit_write(*args: object, **kwargs: object) -> None:
         raise RuntimeError("synthetic audit failure")
 
     monkeypatch.setattr(AuditService, "record", fail_audit_write)
-    with TestClient(app, raise_server_exceptions=False) as non_raising_client:
+    with TestClient(
+        app,
+        headers=auth_headers,
+        raise_server_exceptions=False,
+    ) as non_raising_client:
         response = non_raising_client.post(
             f"/api/v1/cases/{medium_case_id}/decision",
-            json={"action": "escalate", "analyst": "integration_test"},
+            json={"action": "escalate", "expected_version": 2},
         )
     assert response.status_code == 500
 
@@ -194,13 +202,77 @@ def test_postgresql_rolls_back_case_update_when_audit_write_fails(
         with Session(engine) as db:
             risk_case = db.get(models.RiskCase, medium_case_id)
             assert risk_case is not None
-            assert risk_case.status == "resolved"
+            assert risk_case.status == "on_hold"
+            assert risk_case.version == 2
             decision_logs = db.scalars(
                 select(models.AuditLog)
                 .where(models.AuditLog.action == "case_decision_recorded")
                 .where(models.AuditLog.entity_id == medium_case_id),
             ).all()
-            assert len(decision_logs) == 2
+            assert len(decision_logs) == 1
             assert all(json.loads(log.details)["action"] != "escalate" for log in decision_logs)
     finally:
         engine.dispose()
+
+
+def test_postgresql_allows_only_one_concurrent_decision(
+    postgres_client: TestClient,
+    migrated_postgres: str,
+) -> None:
+    simulator_response = postgres_client.post(
+        "/api/v1/simulator/run",
+        json={
+            "scenario": "high_value_withdrawal_incomplete_kyc",
+            "player_id": "plr_pg_concurrent",
+        },
+    )
+    assert simulator_response.status_code == 200
+    case_id = simulator_response.json()["case_ids"][0]
+
+    def decide(action: str) -> tuple[int, dict[str, object]]:
+        response = postgres_client.post(
+            f"/api/v1/cases/{case_id}/decision",
+            json={"action": action, "expected_version": 1},
+        )
+        return response.status_code, response.json()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(decide, ("hold", "escalate")))
+
+    assert sorted(status_code for status_code, _ in results) == [200, 409]
+    conflict = next(body for status_code, body in results if status_code == 409)
+    assert conflict["detail"] == "Case changed since it was loaded; refresh and try again"
+
+    engine = create_database_engine(migrated_postgres)
+    try:
+        with Session(engine) as db:
+            risk_case = db.get(models.RiskCase, case_id)
+            assert risk_case is not None
+            assert risk_case.version == 2
+            assert risk_case.status in {"on_hold", "escalated"}
+            decision_logs = db.scalars(
+                select(models.AuditLog)
+                .where(models.AuditLog.action == "case_decision_recorded")
+                .where(models.AuditLog.entity_id == case_id),
+            ).all()
+            assert len(decision_logs) == 1
+    finally:
+        engine.dispose()
+
+
+def test_postgresql_routes_reject_unauthorized_requests(
+    postgres_client: TestClient,
+) -> None:
+    with TestClient(app) as unauthenticated_client:
+        responses = [
+            unauthenticated_client.get("/api/v1/cases"),
+            unauthenticated_client.post(
+                "/api/v1/cases/1/decision",
+                json={"action": "hold", "expected_version": 1},
+            ),
+        ]
+
+    assert all(response.status_code == 401 for response in responses)
+    assert all(
+        response.json() == {"detail": "Invalid operator credentials"} for response in responses
+    )

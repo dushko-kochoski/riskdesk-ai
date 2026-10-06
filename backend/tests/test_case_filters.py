@@ -10,7 +10,7 @@ from riskdesk_ai.main import app
 
 
 @pytest.fixture()
-def client() -> Generator[TestClient, None, None]:
+def client(auth_headers: dict[str, str]) -> Generator[TestClient, None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -27,7 +27,7 @@ def client() -> Generator[TestClient, None, None]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=auth_headers) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
@@ -55,7 +55,7 @@ def seed_case_queue(client: TestClient) -> dict[str, int]:
 
     hold_response = client.post(
         f"/api/v1/cases/{medium_case_id}/decision",
-        json={"action": "hold"},
+        json={"action": "hold", "expected_version": 1},
     )
     assert hold_response.status_code == 200
 

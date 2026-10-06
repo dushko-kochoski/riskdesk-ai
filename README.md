@@ -4,7 +4,7 @@ A local risk-event intake and analyst case-review service with a FastAPI backend
 
 ## Current Portfolio Upgrade
 
-The first audited upgrade adds server-backed case queue filters for player ID, risk level, and status. It includes responsive controls, explicit apply/clear behavior, and a useful empty state. The deployment foundation adds Python 3.12, PostgreSQL support, Alembic migrations, and real PostgreSQL integration coverage without provisioning a cloud service. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md), [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md), and [dependency security audit](docs/DEPENDENCY_AUDIT.md) for verified results and remaining limitations.
+The portfolio upgrade now includes server-backed queue filters, Python 3.12, PostgreSQL support, Alembic migrations, single-operator access protection, and concurrency-safe case decisions. No cloud service has been provisioned. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md), [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md), [access and case-transition rules](docs/ACCESS_AND_CASE_TRANSITIONS.md), and [dependency security audit](docs/DEPENDENCY_AUDIT.md) for verified results and remaining limitations.
 
 ## Portfolio Screenshots
 
@@ -35,6 +35,10 @@ cd "C:\RiskDesk AI\backend"
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --require-hashes -r requirements.lock
 $env:RISKDESK_MIGRATION_DATABASE_URL="sqlite:///./riskdesk_ai.db"
+$operator = Get-Credential -UserName "portfolio_operator"
+$env:RISKDESK_OPERATOR_USERNAME=$operator.UserName
+$env:RISKDESK_OPERATOR_PASSWORD=$operator.GetNetworkCredential().Password
+$env:RISKDESK_DEMO_MODE="true" # local synthetic demo only
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m ruff check .
@@ -48,7 +52,7 @@ cd "C:\RiskDesk AI\backend"
 uv pip compile requirements.txt --python-version 3.12 --universal --generate-hashes --output-file requirements.lock
 ```
 
-Set `RISKDESK_DATABASE_URL` for application traffic and `RISKDESK_MIGRATION_DATABASE_URL` separately for Alembic. Do not commit either connection string. Existing SQLite installations are preserved through a baseline-stamp procedure documented in the [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md).
+Set `RISKDESK_DATABASE_URL` for application traffic and `RISKDESK_MIGRATION_DATABASE_URL` separately for Alembic. Set the operator username and password only through the server environment or its secret store. Do not commit connection strings or credentials. Existing SQLite installations are preserved through a baseline-stamp procedure documented in the [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md).
 
 ## Frontend
 
@@ -69,12 +73,14 @@ npm run dev
 
 ## Simulator
 
-Run a synthetic casino-event scenario through the same ingestion path as the API:
+Run a synthetic casino-event scenario through the same ingestion path as the API. This endpoint is available only when `RISKDESK_DEMO_MODE=true`. The following examples assume `$operator = Get-Credential`:
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8000/api/v1/simulator/run" `
+  -Authentication Basic `
+  -Credential $operator `
   -ContentType "application/json" `
   -Body '{"scenario":"high_value_withdrawal_incomplete_kyc","player_id":"plr_demo_001"}'
 ```
@@ -103,14 +109,16 @@ high_risk_country_withdrawal
 
 ## Case Decisions
 
-Record an analyst decision on an existing risk case:
+Record an operator decision on an existing risk case. Read the case first and send its current `version`; the server derives the audit actor from verified authentication:
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8000/api/v1/cases/1/decision" `
+  -Authentication Basic `
+  -Credential $operator `
   -ContentType "application/json" `
-  -Body '{"action":"hold","analyst":"demo_analyst","note":"High withdrawal with incomplete KYC. Holding for review."}'
+  -Body '{"action":"hold","expected_version":1,"note":"High withdrawal with incomplete KYC. Holding for review."}'
 ```
 
 Example response:
@@ -121,7 +129,8 @@ Example response:
   "action": "hold",
   "previous_status": "open",
   "new_status": "on_hold",
-  "analyst": "demo_analyst",
+  "actor": "portfolio_operator",
+  "version": 2,
   "note": "High withdrawal with incomplete KYC. Holding for review.",
   "audit_log_id": 10
 }
@@ -132,10 +141,10 @@ Example response:
 Filter the analyst case queue with optional query parameters:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?status=open"
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?risk_level=HIGH"
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?player_id=plr_demo_001"
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?status=on_hold&risk_level=MEDIUM"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?status=open" -Authentication Basic -Credential $operator
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?risk_level=HIGH" -Authentication Basic -Credential $operator
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?player_id=plr_demo_001" -Authentication Basic -Credential $operator
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?status=on_hold&risk_level=MEDIUM" -Authentication Basic -Credential $operator
 ```
 
 ## Dashboard Summary
@@ -143,7 +152,7 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases?status=on_hold&risk_level=
 Fetch aggregate metrics for the analyst dashboard:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/api/v1/dashboard/summary"
+Invoke-RestMethod "http://127.0.0.1:8000/api/v1/dashboard/summary" -Authentication Basic -Credential $operator
 ```
 
 Example response:
@@ -181,7 +190,9 @@ Reset local demo data:
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/demo/reset"
+  -Uri "http://127.0.0.1:8000/api/v1/demo/reset" `
+  -Authentication Basic `
+  -Credential $operator
 ```
 
 Generate a clean demo dataset:
@@ -189,5 +200,7 @@ Generate a clean demo dataset:
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri "http://127.0.0.1:8000/api/v1/demo/seed"
+  -Uri "http://127.0.0.1:8000/api/v1/demo/seed" `
+  -Authentication Basic `
+  -Credential $operator
 ```

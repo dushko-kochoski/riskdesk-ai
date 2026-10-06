@@ -22,7 +22,7 @@ EXPECTED_STATUSES = {
 
 
 @pytest.fixture()
-def client() -> Generator[TestClient, None, None]:
+def client(auth_headers: dict[str, str]) -> Generator[TestClient, None, None]:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -39,7 +39,7 @@ def client() -> Generator[TestClient, None, None]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=auth_headers) as test_client:
         yield test_client
     app.dependency_overrides.clear()
 
@@ -102,7 +102,7 @@ def test_summary_after_hold_decision_counts_on_hold_cases_and_exposure(
 
     decision_response = client.post(
         f"/api/v1/cases/{case_id}/decision",
-        json={"action": "hold"},
+        json={"action": "hold", "expected_version": 1},
     )
     assert decision_response.status_code == 200
 
@@ -131,7 +131,7 @@ def test_prevented_exposure_increases_after_escalating_withdrawal_case(
 
     decision_response = client.post(
         f"/api/v1/cases/{case_id}/decision",
-        json={"action": "escalate"},
+        json={"action": "escalate", "expected_version": 1},
     )
     assert decision_response.status_code == 200
 
@@ -150,7 +150,7 @@ def test_recent_audit_logs_returns_latest_logs(client: TestClient) -> None:
 
     decision_response = client.post(
         f"/api/v1/cases/{case_id}/decision",
-        json={"action": "hold"},
+        json={"action": "hold", "expected_version": 1},
     )
     assert decision_response.status_code == 200
 

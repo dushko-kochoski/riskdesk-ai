@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +13,11 @@ class RootRead(BaseModel):
 class HealthRead(BaseModel):
     status: str
     service: str
+
+
+class AuthenticatedOperatorRead(BaseModel):
+    actor: str
+    demo_mode: bool
 
 
 class EventCreate(BaseModel):
@@ -52,6 +58,7 @@ class RiskCaseRead(BaseModel):
     recommended_action: str
     triggered_rules: list[str]
     status: str
+    version: int
     created_at: datetime
 
 
@@ -62,9 +69,21 @@ class CaseFilters(BaseModel):
     recommended_action: str | None = None
 
 
+class CaseDecisionAction(StrEnum):
+    APPROVE = "approve"
+    HOLD = "hold"
+    ESCALATE = "escalate"
+    REQUEST_KYC = "request_kyc"
+    REJECT = "reject"
+    MARK_FALSE_POSITIVE = "mark_false_positive"
+    CLOSE = "close"
+
+
 class CaseDecisionRequest(BaseModel):
-    action: str = Field(min_length=1)
-    analyst: str = "demo_analyst"
+    model_config = ConfigDict(extra="forbid")
+
+    action: CaseDecisionAction
+    expected_version: int = Field(ge=1)
     note: str | None = None
 
 
@@ -73,7 +92,8 @@ class CaseDecisionResponse(BaseModel):
     action: str
     previous_status: str
     new_status: str
-    analyst: str
+    actor: str
+    version: int
     note: str | None
     audit_log_id: int
 

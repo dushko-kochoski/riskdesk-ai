@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from riskdesk_ai import models, schemas
@@ -84,11 +84,22 @@ class CaseRepository:
     def get(self, case_id: int) -> models.RiskCase | None:
         return self.db.get(models.RiskCase, case_id)
 
-    def update_status(self, risk_case: models.RiskCase, status: str) -> models.RiskCase:
-        risk_case.status = status
-        self.db.flush()
-        self.db.refresh(risk_case)
-        return risk_case
+    def update_status_if_version_matches(
+        self,
+        *,
+        case_id: int,
+        expected_version: int,
+        status: str,
+    ) -> models.RiskCase | None:
+        statement = (
+            update(models.RiskCase)
+            .where(models.RiskCase.id == case_id)
+            .where(models.RiskCase.version == expected_version)
+            .values(status=status, version=models.RiskCase.version + 1)
+            .returning(models.RiskCase)
+            .execution_options(populate_existing=True)
+        )
+        return self.db.scalars(statement).one_or_none()
 
     def count(self) -> int:
         statement = select(func.count()).select_from(models.RiskCase)
