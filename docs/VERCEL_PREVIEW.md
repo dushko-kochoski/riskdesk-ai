@@ -18,13 +18,14 @@ Vercel's current `services` configuration replaced the older `experimentalServic
 
 No resource was created, linked, or changed.
 
-- Vercel CLI 53.1.1 is installed, but its cached token is invalid. Project, team, integration, environment, and billing access could not be enumerated without a fresh `vercel login`.
+- Vercel CLI 59.1.4 authenticated successfully as `dushko-kochoski`. The personal scope is active on the Hobby plan, GitHub import is configured, and nine existing unrelated projects are visible.
+- No RiskDesk project exists and `vercel integration ls --all` reports no installed Marketplace resources.
 - No `.vercel` project link exists in the repository.
 - No Neon CLI, Neon environment variables, or local Neon project link were found. Neon account/project access is therefore not available from this workstation session.
 
 ## Exact account and resource setup required
 
-1. Sign in to a Vercel account or team and confirm that this personal, non-commercial portfolio preview is eligible for Hobby. Update or use Vercel CLI 59.1.4 or newer because the installed CLI predates the current Services configuration.
+1. Use the authenticated Vercel personal scope and confirm that this personal, non-commercial portfolio preview remains eligible for Hobby. Use Vercel CLI 59.1.4 or newer for the current Services configuration.
 2. Import the GitHub repository as one Vercel project, set its framework preset to **Services**, and keep the repository root as the project root.
 3. Enable Vercel Authentication for preview deployments as an outer reviewer gate. The application's own HTTP Basic authentication remains enabled behind it.
 4. Sign in to Neon and create one Free-plan project for preview in a region close to the selected Vercel function region. Create a preview database/branch and retain both its pooled application URL and direct migration URL.
@@ -92,12 +93,13 @@ Official references: [Vercel Services](https://vercel.com/docs/services), [Servi
 - Ruff and Alembic model/schema drift check: passed.
 - Frontend ESLint and TypeScript/Vite production build: passed.
 - Production npm audit: zero findings.
-- Vercel CLI 59.1.4 local discovery recognized `frontend [Vite]` and `backend [FastAPI]` plus the shared URL. Its Windows development runtime then hit a CLI-generated Python path escaping bug (`\backend` interpreted as a backspace), so a full `vercel dev -L` runtime check remains for Linux or a future fixed CLI.
+- Native Windows Vercel CLI 59.1.4 discovery recognized `frontend [Vite]` and `backend [FastAPI]`, but its generated Python launcher interpreted the `\backend` path segment as a backspace. Repeating the test from the no-space `C:\Projects\RiskDeskAI` checkout confirmed that the space was not the cause.
+- Running that separate checkout through an ephemeral Linux/Python 3.12/Node 22 container avoided the Vercel Windows launcher defect. The shared Vercel origin returned Vite HTML at `/`, FastAPI JSON at `/api` and `/api/healthz`, the protected server response at `/api/v1/auth/me`, and a FastAPI JSON `404` at `/api/nonexistent`; the frontend catch-all did not intercept API routes.
 - The normal Vite development flow verified authenticated dashboard traffic entirely through `http://127.0.0.1:5173/api/*`; health, authentication, summary, and case requests all returned `200`, with zero browser console errors or warnings.
 
 ## Remaining gates before deployment
 
-- Restore Vercel login and verify team, plan, Services access, GitHub connection, project framework preset, and preview protection.
+- Import or link a new RiskDesk Vercel project, select the Services framework preset, and configure preview protection. No deployment should be triggered until Neon and environment settings are ready.
 - Confirm Neon account access, region, project ownership, roles, pooled/direct URLs, backups, and usage limits.
 - Replace the origin placeholder with the exact assigned stable preview or custom domain.
 - Run the migration and controlled seed against the actual isolated preview database.
