@@ -7,6 +7,8 @@ __pycache__/
 *.egg-info/
 backend/build/
 **/.vercel/
+**/.playwright-cli/
+.neon/
 
 # Local database
 *.db
