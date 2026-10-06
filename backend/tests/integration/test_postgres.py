@@ -8,13 +8,14 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, inspect, select
+from sqlalchemy import delete, func, inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from riskdesk_ai import models
 from riskdesk_ai.database import create_database_engine, get_db
 from riskdesk_ai.main import app
+from riskdesk_ai.seed_preview import seed_preview
 from riskdesk_ai.services.audit_service import AuditService
 
 pytestmark = pytest.mark.integration
@@ -276,3 +277,24 @@ def test_postgresql_routes_reject_unauthorized_requests(
     assert all(
         response.json() == {"detail": "Invalid operator credentials"} for response in responses
     )
+
+
+def test_postgresql_preview_seed_uses_direct_operator_connection(
+    postgres_client: TestClient,
+    migrated_postgres: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RISKDESK_DEPLOYMENT_ENV", "preview")
+    monkeypatch.setenv("RISKDESK_PREVIEW_SEED_ENABLED", "true")
+
+    result = seed_preview(migrated_postgres)
+
+    assert result["events_created"] == 14
+    assert result["cases_created"] == 4
+    engine = create_database_engine(migrated_postgres)
+    try:
+        with Session(engine) as db:
+            assert db.scalar(select(func.count()).select_from(models.Event)) == 14
+            assert db.scalar(select(func.count()).select_from(models.RiskCase)) == 4
+    finally:
+        engine.dispose()

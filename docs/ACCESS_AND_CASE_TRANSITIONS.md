@@ -14,7 +14,7 @@ This upgrade protects the portfolio demo without provisioning an identity provid
 - Case rows carry an integer `version`. Decisions use a conditional update on both case ID and expected version, so competing writes cannot both succeed.
 - The case update and audit insert share one database transaction. An audit failure rolls back the case change.
 
-The public `/`, `/healthz`, and generated API documentation remain reachable for health checks and development discovery. Production documentation exposure should be decided when the deployment entrypoint is configured.
+The public `/api`, `/api/healthz`, and generated `/api/docs` documentation remain reachable for health checks and development discovery. Production documentation exposure should be decided before wider access.
 
 ## Server configuration
 
