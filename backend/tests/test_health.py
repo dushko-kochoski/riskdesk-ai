@@ -6,16 +6,20 @@ from riskdesk_ai.main import app, create_app
 def test_root_endpoint_works() -> None:
     client = TestClient(app)
 
-    response = client.get("/")
+    response = client.get("/api")
 
     assert response.status_code == 200
-    assert response.json() == {"service": "riskdesk-ai", "status": "ok", "docs": "/docs"}
+    assert response.json() == {
+        "service": "riskdesk-ai",
+        "status": "ok",
+        "docs": "/api/docs",
+    }
 
 
 def test_health_endpoint_works() -> None:
     client = TestClient(app)
 
-    response = client.get("/healthz")
+    response = client.get("/api/healthz")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "riskdesk-ai"}

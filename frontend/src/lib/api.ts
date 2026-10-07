@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 let authorizationHeader: string | null = null;
 
 export type HealthResponse = {
@@ -144,7 +144,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export function getHealth() {
-  return request<HealthResponse>("/healthz");
+  return request<HealthResponse>("/api/healthz");
 }
 
 export function getAuthenticatedOperator() {

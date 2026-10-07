@@ -4,7 +4,7 @@ A local risk-event intake and analyst case-review service with a FastAPI backend
 
 ## Current Portfolio Upgrade
 
-The portfolio upgrade now includes server-backed queue filters, Python 3.12, PostgreSQL support, Alembic migrations, single-operator access protection, and concurrency-safe case decisions. No cloud service has been provisioned. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md), [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md), [access and case-transition rules](docs/ACCESS_AND_CASE_TRANSITIONS.md), and [dependency security audit](docs/DEPENDENCY_AUDIT.md) for verified results and remaining limitations.
+The portfolio upgrade now includes server-backed queue filters, Python 3.12, PostgreSQL support, Alembic migrations, single-operator access protection, concurrency-safe case decisions, and a single-origin Vercel preview configuration. No cloud service has been provisioned. See the [portfolio upgrade audit](docs/PORTFOLIO_UPGRADE.md), [PostgreSQL deployment foundation](docs/POSTGRES_DEPLOYMENT_FOUNDATION.md), [access and case-transition rules](docs/ACCESS_AND_CASE_TRANSITIONS.md), [Vercel preview readiness plan](docs/VERCEL_PREVIEW.md), and [dependency security audit](docs/DEPENDENCY_AUDIT.md) for verified results and remaining limitations.
 
 ## Portfolio Screenshots
 
@@ -56,7 +56,7 @@ Set `RISKDESK_DATABASE_URL` for application traffic and `RISKDESK_MIGRATION_DATA
 
 ## Frontend
 
-The frontend is a Vite React TypeScript app in `frontend/`. It expects the backend at `http://127.0.0.1:8000` by default.
+The frontend is a Vite React TypeScript app in `frontend/`. Browser requests use same-origin `/api/*` URLs. During local Vite development those requests are proxied to the backend at `http://127.0.0.1:8000`.
 
 ```powershell
 cd "C:\RiskDesk AI\frontend"
@@ -64,7 +64,7 @@ npm install
 npm run dev
 ```
 
-Open the local Vite URL shown in the terminal. To point the frontend at a different backend URL, set `VITE_API_BASE_URL`.
+Open the local Vite URL shown in the terminal. To point the frontend at a different backend during a specialized local workflow, set `VITE_API_BASE_URL`. Never place database or operator credentials in a `VITE_*` variable because Vite exposes those values to the browser bundle.
 
 ```powershell
 $env:VITE_API_BASE_URL="http://127.0.0.1:8000"
